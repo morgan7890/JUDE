@@ -8,7 +8,8 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json()); // Middleware to parse JSON request bodies
 
-// --- NEW: /api/search ROUTE (Placeholder - You still need to implement real search) ---
+// --- NEW: /api/search ROUTE with real API call ---
+// Example: Searching YouTube API (You need to use your own YouTube API key)
 app.get("/api/search", async (req, res) => {
   const query = req.query.q;
   if (!query) {
@@ -16,20 +17,27 @@ app.get("/api/search", async (req, res) => {
   }
 
   try {
-    // --- REPLACE THIS WITH YOUR ACTUAL SEARCH LOGIC ---
-    console.log(`[${new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}] Placeholder search for: ${query}`);
-    const dummyResponse = {
-      title: `Search result for: ${query} (Placeholder)`,
-      thumbnail: "https://via.placeholder.com/480/00C2FF/FFFFFF/?Text=Placeholder",
-      channel: "Dummy Channel",
-      duration: "3:30",
-      views: "1,000,000",
-      url: "https://example.com/dummyvideo",
-    };
-    res.json(dummyResponse);
+    // Example: Replace this with actual YouTube API search logic
+    const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&key=YOUR_YOUTUBE_API_KEY`;
+    const response = await axios.get(apiUrl);
+    
+    if (response.data.items.length > 0) {
+      const video = response.data.items[0]; // First result
+      const result = {
+        title: video.snippet.title,
+        thumbnail: video.snippet.thumbnails.high.url,
+        channel: video.snippet.channelTitle,
+        duration: "Unknown", // This will need another API call to get the duration
+        views: "Unknown", // Similarly, you might need another call to get view count
+        url: `https://www.youtube.com/watch?v=${video.id.videoId}`,
+      };
+      res.json(result);
+    } else {
+      res.status(404).json({ error: "No results found." });
+    }
 
   } catch (error) {
-    console.error(`[${new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}] Error during placeholder search:`, error);
+    console.error("Error during search API call:", error.message);
     res.status(500).json({ error: "Failed to perform search." });
   }
 });
@@ -38,8 +46,8 @@ app.get("/api/search", async (req, res) => {
 app.post("/api/download", async (req, res) => {
   const { url: videoUrl, type } = req.body; // Expecting URL and type in the body
 
-  if (!videoUrl) {
-    return res.status(400).json({ error: "Video URL is required for download." });
+  if (!videoUrl || !type) {
+    return res.status(400).json({ error: "Both video URL and type are required for download." });
   }
 
   console.log(`[${new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}] Attempting download for URL: ${videoUrl} (Type: ${type})`);
@@ -47,7 +55,7 @@ app.post("/api/download", async (req, res) => {
   try {
     const response = await axios.post(
       "https://youtube-api-v1.vercel.app/api/v1/yt/download",
-      { url: videoUrl }
+      { url: videoUrl, type }
     );
 
     console.log(`[${new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}] Third-party API response status: ${response.status}`);
