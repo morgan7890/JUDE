@@ -1,83 +1,79 @@
 const express = require("express");
 const path = require("path");
-const axios = require("axios");
+const ytDlp = require('yt-dlp');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Serve frontend
 app.use(express.static(path.join(__dirname, "public")));
-app.use(express.json()); // Middleware to parse JSON request bodies
+app.use(express.json());
 
-// --- NEW: /api/search ROUTE ---
+// SEARCH ROUTE
 app.get("/api/search", async (req, res) => {
   const query = req.query.q;
-  if (!query) {
-    return res.status(400).json({ error: "Search query is required." });
-  }
+  if (!query) return res.status(400).json({ error: "Missing search query" });
 
   try {
-    // --- REPLACE THIS WITH YOUR ACTUAL SEARCH LOGIC ---
-    // Example (for YouTube Data API, you'd need to set up the API client):
-    // const youtubeApiKey = 'YOUR_YOUTUBE_API_KEY';
-    // const searchResults = await axios.get(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&key=${youtubeApiKey}&maxResults=1`);
-    // if (searchResults.data.items && searchResults.data.items.length > 0) {
-    //   const videoId = searchResults.data.items[0].id.videoId;
-    //   const videoDetails = await axios.get(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${videoId}&key=${youtubeApiKey}`);
-    //   if (videoDetails.data.items && videoDetails.data.items.length > 0) {
-    //     const details = videoDetails.data.items[0];
-    //     const responseData = {
-    //       title: details.snippet.title,
-    //       thumbnail: details.snippet.thumbnails.medium.url,
-    //       channel: details.snippet.channelTitle,
-    //       duration: details.contentDetails.duration, // Format this as needed
-    //       views: details.statistics.viewCount,
-    //       url: `https://www.youtube.com/watch?v=${videoId}`, // Construct the video URL
-    //     };
-    //     return res.json(responseData);
-    //   }
-    // }
-    // --- END OF PLACEHOLDER SEARCH LOGIC ---
+    const searchResponse = await ytDlp.search(query);
+    const video = searchResponse[0]; // First result
 
-    // For now, let's send a dummy response for testing:
-    const dummyResponse = {
-      title: `Search result for: ${query}`,
-      thumbnail: "https://via.placeholder.com/480/00C2FF/FFFFFF/?Text=Placeholder",
-      channel: "Dummy Channel",
-      duration: "3:30",
-      views: "1,000,000",
-      url: "https://example.com/dummyvideo",
-    };
-    res.json(dummyResponse);
-
-  } catch (error) {
-    console.error("Error during search:", error);
-    res.status(500).json({ error: "Failed to perform search." });
+    res.json({
+      title: video.title,
+      thumbnail: video.thumbnail,
+      channel: video.uploader,
+      duration: video.duration,
+      views: video.views,
+      url: video.url
+    });
+  } catch (err) {
+    console.error("Error searching video:", err.message);
+    res.status(500).json({ error: "Failed to fetch video details" });
   }
 });
 
-// --- UPDATED: /api/download ROUTE (still POST) ---
-app.post("/api/download", async (req, res) => {
-  const { url: videoUrl, type } = req.body; // Expecting URL and type in the body
+// DOWNLOAD ROUTE
+app.get("/api/download", async (req, res) => {
+  const videoUrl = req.query.url;
+  const type = req.query.type;
 
-  if (!videoUrl) {
-    return res.status(400).json({ error: "Video URL is required for download." });
+  if (!videoUrl || !type) {
+    return res.status(400).json({ error: "Missing parameters" });
   }
 
   try {
-    const response = await axios.post(
-      "https://youtube-api-v1.vercel.app/api/v1/yt/download",
-      { url: videoUrl }
-    );
+    const format = type === 'audio' ? 'bestaudio' : 'bestvideo';
+    const options = {
+      format,
+      output: '-',
+      quiet: true
+    };
 
-    // You might need to adjust how you send the download link to the client
-    // based on the response from the third-party API.
-    res.json(response.data);
+    const stream = ytDlp(videoUrl, options);
+
+    // Set content type based on the download type (audio or video)
+    if (type === 'audio') {
+      res.setHeader('Content-Type', 'audio/mpeg');
+    } else {
+      res.setHeader('Content-Type', 'video/mp4');
+    }
+
+    // Stream the file directly to the client
+    stream.pipe(res);
+    
+    stream.on('end', () => {
+      console.log('Download complete');
+    });
+
+    stream.on('error', (err) => {
+      console.error('Error during download stream:', err.message);
+      res.status(500).json({ error: "Failed to fetch download link" });
+    });
+
   } catch (error) {
-    console.error("Error during download:", error);
-    res.status(500).json({ error: "Failed to fetch download links." });
+    console.error("Download error:", error.message);
+    res.status(500).json({ error: "Failed to fetch download link" });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`✅ Server running on http://localhost:${PORT}`);
 });
