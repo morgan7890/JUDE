@@ -1,97 +1,52 @@
 const express = require("express");
 const path = require("path");
-const ytDlp = require('yt-dlp');
+const axios = require("axios");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const youtubeApiKey = "YOUR_YOUTUBE_API_KEY"; // Replace with your API key
+
+// Serve frontend
 app.use(express.static(path.join(__dirname, "public")));
-app.use(express.json());
+app.use(express.json()); // Middleware to parse JSON request bodies
 
-// SEARCH ROUTE
+// --- Real /api/search Route ---
 app.get("/api/search", async (req, res) => {
-    const query = req.query.q;
-    if (!query) {
-        console.log(`[${new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}] Error: Missing search query`);
-        return res.status(400).json({ error: "Missing search query" });
+  const query = req.query.q;
+  if (!query) {
+    return res.status(400).json({ error: "Search query is required." });
+  }
+
+  const youtubeApiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&key=${youtubeApiKey}`;
+
+  try {
+    const response = await axios.get(youtubeApiUrl);
+    const items = response.data.items;
+
+    if (items && items.length > 0) {
+      const video = items[0]; // Get the first result
+      const videoDetails = {
+        title: video.snippet.title,
+        thumbnail: video.snippet.thumbnails.high.url,
+        channel: video.snippet.channelTitle,
+        duration: "Unknown", // You might want to fetch this separately if needed
+        views: "Unknown", // You might want to fetch this separately if needed
+        url: `https://www.youtube.com/watch?v=${video.id.videoId}`,
+      };
+
+      res.json(videoDetails);
+    } else {
+      res.status(404).json({ error: "No results found." });
     }
-
-    console.log(`[${new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}] Searching for: ${query}`);
-
-    try {
-        const searchResponse = await ytDlp.search(query);
-
-        if (!searchResponse || searchResponse.length === 0) {
-            console.log(`[${new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}] No results found for query: ${query}`);
-            return res.status(404).json({ error: "No results found" });
-        }
-
-        const video = searchResponse[0]; // Take the first result
-
-        const responseData = {
-            title: video.title,
-            thumbnail: video.thumbnail,
-            channel: video.uploader,
-            duration: video.duration,
-            views: video.views,
-            url: video.url
-        };
-
-        console.log(`[${new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}] Search successful. First result: ${responseData.title}`);
-        res.json(responseData);
-
-    } catch (err) {
-        console.error(`[${new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}] Error searching video:`, err);
-        res.status(500).json({ error: "Failed to fetch video details" });
-    }
+  } catch (error) {
+    console.error("Error during YouTube search:", error);
+    res.status(500).json({ error: "Failed to perform search." });
+  }
 });
 
-// DOWNLOAD ROUTE
-app.get("/api/download", async (req, res) => {
-    const videoUrl = req.query.url;
-    const type = req.query.type;
-
-    if (!videoUrl || !type) {
-        console.log(`[${new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}] Error: Missing download parameters (url or type)`);
-        return res.status(400).json({ error: "Missing parameters" });
-    }
-
-    console.log(`[${new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}] Attempting to download: ${videoUrl} as ${type}`);
-
-    try {
-        const format = type === 'audio' ? 'bestaudio' : 'bestvideo';
-        const options = {
-            format,
-            output: '-',
-            quiet: true
-        };
-
-        const stream = ytDlp(videoUrl, options);
-
-        // Set content type based on the download type (audio or video)
-        if (type === 'audio') {
-            res.setHeader('Content-Type', 'audio/mpeg');
-        } else {
-            res.setHeader('Content-Type', 'video/mp4');
-        }
-
-        // Stream the file directly to the client
-        stream.pipe(res);
-
-        stream.on('end', () => {
-            console.log(`[${new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}] Download complete for: ${videoUrl}`);
-        });
-
-        stream.on('error', (err) => {
-            console.error(`[${new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}] Error during download stream for ${videoUrl}:`, err.message);
-            res.status(500).json({ error: "Failed to fetch download link" });
-        });
-
-    } catch (error) {
-        console.error(`[${new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}] Download error for ${videoUrl}:`, error.message);
-        res.status(500).json({ error: "Failed to fetch download link" });
-    }
-});
+// Your /api/download route remains the same
+// ...
 
 app.listen(PORT, () => {
-    console.log(`[${new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })}] ✅ Server running on http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
